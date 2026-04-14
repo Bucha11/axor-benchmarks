@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "axor-benchmarks"
-version = "0.1.0"
+version = "0.1.1"
 description = "Benchmark governed vs raw Claude on your codebase"
 readme = "README.md"
 license = { text = "MIT" }
@@ -43,5 +43,9 @@ Changelog = "https://github.com/Bucha11/axor-benchmarks/releases"
 packages = ["benchmarks"]
 
 [tool.pytest.ini_options]
-testpaths = ["."]
+testpaths = [
+    "test_api_key.py",
+    "test_api_key_management.py",
+    "test_api_key_simple.py",
+]
 python_files = ["test_*.py"]
