@@ -1,8 +1,8 @@
 # axor-benchmarks
 
-[![CI](https://github.com/Bucha11/axor-benchmarks/actions/workflows/ci.yml/badge.svg)](https://github.com/Bucha11/axor-benchmarks/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/axor-benchmarks)](https://pypi.org/project/axor-benchmarks/)
-[![Python](https://img.shields.io/pypi/pyversions/axor-benchmarks)](https://pypi.org/project/axor-benchmarks/)
+[![CI](https://github.com/Bucha11/axor-benchmarks/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Bucha11/axor-benchmarks/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/axor-benchmarks?cacheSeconds=300)](https://pypi.org/project/axor-benchmarks/)
+[![Python](https://img.shields.io/pypi/pyversions/axor-benchmarks?cacheSeconds=300)](https://pypi.org/project/axor-benchmarks/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Benchmark governed (axor) vs raw Claude on your codebase.**
