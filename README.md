@@ -26,24 +26,7 @@ cd ~/my-project
 axor-bench
 ```
 
-Output:
-```
-  axor benchmark results
-  repo: ~/my-project
-  file: src/auth.py
-
-  task                  raw tokens    governed    savings  bar               policy
-  ─────────────────────────────────────────────────────────────────────────────────
-  write_test                 1,842       1,203    -34.7%  ████████░░░░░░░░  focused_generative
-  explain_function           1,105         891    -19.4%  ███░░░░░░░░░░░░░  focused_readonly
-  find_bugs                  1,290         978    -24.2%  ████░░░░░░░░░░░░  focused_readonly
-  ─────────────────────────────────────────────────────────────────────────────────
-  TOTAL                      4,237       3,072    -27.5%  ████░░░░░░░░░░░░
-
-  insights
-  → Token reduction:    27.5% (4,237 → 3,072 tokens)
-  → Most used policy:   focused_readonly (2 tasks)
-```
+Runs `quick` suite (1 small task, ~30s). Use `--suite full` for complete benchmark.
 
 ---
 
@@ -94,13 +77,42 @@ axor-bench --suite federation     # test child agents
 ```
 axor-bench [options]
 
-  --api-key KEY     Anthropic API key
-  --repo PATH       Repo to benchmark (default: current dir)
-  --file PATH       Specific file to use as context
-  --suite SUITE     quick | small | large | conversation | federation | full
-  --no-raw          Skip raw Claude baseline (governed only)
-  --output FORMAT   table (default) | json
+  --api-key KEY       Anthropic API key
+  --repo PATH         Repo to benchmark (default: current dir)
+  --file PATH         Specific file to use as context
+  --suite SUITE       quick | small | large | conversation | federation | full
+  --model MODEL       Model ID for both runners (default: claude-sonnet-4-5)
+  --no-raw            Skip raw Claude baseline (governed only)
+  --delay SECONDS     Pause between tasks to avoid rate limits (default: 0)
+  --output FORMAT     table (default) | json
 ```
+
+---
+
+## Results (claude-sonnet-4-5, full suite)
+
+Benchmark ran against `axor-cli/axor_cli/auth.py` (~340 LOC) from the axor monorepo.
+
+| Task | Suite | Raw tokens | Governed | Savings | Policy |
+|------|-------|-----------|----------|---------|--------|
+| write_test | small | 8,693 | 10,855 | -24.9% | focused_generative |
+| explain_function | small | 3,022 | 2,901 | **+4.0%** | focused_readonly |
+| find_bugs | small | 3,265 | 3,251 | +0.4% | focused_generative |
+| refactor_module | large | 97,370 | 66,005 | **+32.2%** | moderate_mutative |
+| add_error_handling | large | 19,663 | 19,391 | +1.4% | focused_generative |
+| iterative_review | conversation (10 turns) | 117,465 | 70,298 | **+40.2%** | focused_generative |
+| parallel_analysis | federation | — | 17,698 | — | preset:federated |
+| **TOTAL** | | **249,478** | **172,701** | **+30.8%** | |
+
+**Key insights:**
+- **30.8% total token reduction** (249K → 173K tokens)
+- **40.2% savings on multi-turn conversation** — context compression effect grows with session length
+- **32.2% savings on large refactoring** — caching and dedup reduce repeated file reads
+- Small single-turn tasks show near-zero or negative savings — governance overhead > compression benefit on short tasks
+- Federation task (17.7K tokens) ran with `federated` policy preset
+
+> Small tasks (write_test, explain, find_bugs) show minimal savings because the context is not yet large enough
+> for compression to outweigh governance overhead. Savings become significant at 10K+ tokens (large/conversation tasks).
 
 ---
 

@@ -20,37 +20,42 @@ import sys
 import time
 from pathlib import Path
 
-
-def _resolve_api_key(flag_key: str | None) -> str | None:
-    """Priority: --api-key > ANTHROPIC_API_KEY > ~/.axor/config.toml"""
-    if flag_key:
-        return flag_key
-
-    env_key = os.environ.get("ANTHROPIC_API_KEY")
-    if env_key:
-        return env_key
-
-    # try ~/.axor/config.toml
-    config_file = Path.home() / ".axor" / "config.toml"
-    if config_file.exists():
-        try:
-            import tomllib
-        except ImportError:
+# reuse auth from axor-cli if available, else inline fallback
+try:
+    from axor_cli.auth import resolve_api_key as _cli_resolve
+    def _resolve_api_key(flag_key: str | None) -> str | None:
+        return _cli_resolve("claude", flag_key)
+except ImportError:
+    def _resolve_api_key(flag_key: str | None) -> str | None:
+        """Priority: --api-key > ANTHROPIC_API_KEY > ~/.axor/config.toml"""
+        if flag_key:
+            return flag_key
+        env_key = os.environ.get("ANTHROPIC_API_KEY")
+        if env_key:
+            return env_key
+        config_file = Path.home() / ".axor" / "config.toml"
+        if config_file.exists():
             try:
-                import tomli as tomllib
+                import tomllib
             except ImportError:
-                return None
-        try:
-            with open(config_file, "rb") as f:
-                cfg = tomllib.load(f)
-            key = cfg.get("claude", {}).get("api_key")
-            if key:
-                os.environ["ANTHROPIC_API_KEY"] = key  # set for adapters
-                return key
-        except Exception:
-            pass
+                try:
+                    import tomli as tomllib
+                except ImportError:
+                    return None
+            try:
+                with open(config_file, "rb") as f:
+                    cfg = tomllib.load(f)
+                key = cfg.get("claude", {}).get("api_key")
+                if key:
+                    os.environ["ANTHROPIC_API_KEY"] = key
+                    return key
+            except Exception:
+                pass
+        return None
 
-    return None
+
+# Max file content size for benchmark context
+MAX_CONTEXT_BYTES = 8000
 
 
 def _parse_args() -> argparse.Namespace:
@@ -73,15 +78,13 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--suite",
         default="quick",
-        choices=[
-            "quick",
-            "small",
-            "large",
-            "conversation",
-            "federation",
-            "full",
-        ],
+        choices=["quick", "small", "large", "conversation", "federation", "full"],
         help="Which benchmark suite to run (default: quick)",
+    )
+    p.add_argument(
+        "--model",
+        default=None,
+        help="Model ID for both runners (default: claude-sonnet-4-5)",
     )
     p.add_argument(
         "--no-raw",
@@ -108,7 +111,7 @@ def _find_file(repo: Path, override: str | None) -> Path | None:
     if override:
         p = Path(override)
         if not p.exists():
-            print(f"  ✗ file not found: {override}", file=sys.stderr)
+            print(f"  file not found: {override}", file=sys.stderr)
             return None
         return p
 
@@ -116,11 +119,9 @@ def _find_file(repo: Path, override: str | None) -> Path | None:
 
     found = find_target_file(repo)
     if found:
-        print(f"  → using file: {found.relative_to(repo)}")
+        print(f"  -> using file: {found.relative_to(repo)}")
     else:
-        print(
-            "  ⚠  no suitable Python file found — file-based tasks will be skipped"
-        )
+        print("  (no suitable Python file found — file-based tasks will be skipped)")
     return found
 
 
@@ -130,6 +131,7 @@ def _run_suite(
     repo: Path,
     target_file: Path | None,
     run_raw: bool,
+    model: str | None = None,
     delay: float = 0.0,
 ) -> tuple[list, list]:
     from benchmarks.governed import GovernedRunner
@@ -137,8 +139,8 @@ def _run_suite(
     from benchmarks.tasks import get_suite
 
     tasks = get_suite(suite)
-    raw_run = RawRunner(api_key) if run_raw else None
-    gov_run = GovernedRunner(api_key)
+    raw_run = RawRunner(api_key, model=model) if run_raw else None
+    gov_run = GovernedRunner(api_key, model=model)
 
     raw_results = []
     gov_results = []
@@ -147,10 +149,10 @@ def _run_suite(
     if target_file:
         try:
             file_content = target_file.read_text(encoding="utf-8")
-            # cap at 8KB to avoid huge prompts in benchmarks
-            if len(file_content) > 8000:
+            if len(file_content) > MAX_CONTEXT_BYTES:
                 file_content = (
-                    file_content[:8000] + "\n# ... (truncated for benchmark)"
+                    file_content[:MAX_CONTEXT_BYTES]
+                    + f"\n# ... (truncated to {MAX_CONTEXT_BYTES // 1000}KB for benchmark)"
                 )
         except Exception:
             file_content = None
@@ -165,33 +167,33 @@ def _run_suite(
 
             print(f"\n  {task.suite}/{task.name}")
 
-            # raw baseline
+            # raw baseline (skip federation — no raw equivalent)
             if run_raw and task.suite != "federation":
                 print("    running raw ...", end="", flush=True)
                 if task.suite == "conversation":
-                    r = raw_run.run_conversation(task.name, task.turns, fc)
+                    r = raw_run.run_conversation(task.name, task.turns, fc, suite=task.suite)
                 else:
-                    r = raw_run.run_single(task.name, task.prompt, fc)
+                    r = raw_run.run_single(task.name, task.prompt, fc, suite=task.suite)
                 raw_results.append(r)
                 if r.error:
-                    print(f" ✗ {r.error[:50]}")
+                    print(f" error: {r.error[:50]}")
                 else:
                     print(f" {r.total_tokens:,} tokens  {r.latency_ms:.0f}ms")
 
             # governed
             print("    running governed ...", end="", flush=True)
             if task.suite == "conversation":
-                g = gov_run.run_conversation(task.name, task.turns, fc)
+                g = gov_run.run_conversation(task.name, task.turns, fc, suite=task.suite)
             elif task.suite == "federation":
                 g = gov_run.run_federation(
                     task.name, task.prompt, task.child_tasks, fc
                 )
             else:
-                g = gov_run.run_single(task.name, task.prompt, fc)
+                g = gov_run.run_single(task.name, task.prompt, fc, suite=task.suite)
 
             gov_results.append(g)
             if g.error:
-                print(f" ✗ {g.error[:50]}")
+                print(f" error: {g.error[:50]}")
             else:
                 extras = f"  policy={g.policy}"
                 if g.children:
@@ -215,20 +217,20 @@ def main() -> None:
     # API key
     api_key = _resolve_api_key(args.api_key)
     if not api_key:
-        print("  ✗ No API key found.")
-        print(
-            "    Set ANTHROPIC_API_KEY, use --api-key, or run: axor claude → /auth"
-        )
+        print("  No API key found.")
+        print("    Set ANTHROPIC_API_KEY, use --api-key, or run: axor claude -> /auth")
         sys.exit(1)
-    print("  → API key loaded   (ANTHROPIC_API_KEY)")
+    print("  -> API key loaded")
 
     # Repo
     repo = Path(args.repo).resolve()
     if not repo.exists():
-        print(f"  ✗ Repo not found: {repo}", file=sys.stderr)
+        print(f"  Repo not found: {repo}", file=sys.stderr)
         sys.exit(1)
-    print(f"  → repo: {repo}")
-    print(f"  → suite: {args.suite}")
+    print(f"  -> repo: {repo}")
+    print(f"  -> suite: {args.suite}")
+    if args.model:
+        print(f"  -> model: {args.model}")
 
     # Target file
     target_file = _find_file(repo, args.file)
@@ -243,6 +245,7 @@ def main() -> None:
         repo=repo,
         target_file=target_file,
         run_raw=not args.no_raw,
+        model=args.model,
         delay=args.delay,
     )
     elapsed = time.perf_counter() - t0
@@ -265,7 +268,7 @@ def main() -> None:
     print_report(
         rows=rows,
         repo_path=str(repo),
-        target_file=str(target_file.relative_to(repo)) if target_file else None,
+        target_file=str(target_file) if target_file else None,
     )
 
 

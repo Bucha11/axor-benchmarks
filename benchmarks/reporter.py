@@ -75,7 +75,7 @@ def build_rows(
 
         rows.append(ComparisonRow(
             task_name      = name,
-            suite          = name.split("_")[0] if "_" in name else name,
+            suite          = gov.suite if gov and hasattr(gov, "suite") else (raw.suite if raw and hasattr(raw, "suite") else name),
             raw_tokens     = rt,
             gov_tokens     = gt,
             token_savings  = pct,

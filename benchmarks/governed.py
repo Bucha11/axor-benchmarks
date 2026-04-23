@@ -20,6 +20,7 @@ from typing import Any
 @dataclass
 class GovernedResult:
     task_name: str
+    suite: str
     total_tokens: int
     input_tokens: int
     output_tokens: int
@@ -36,7 +37,7 @@ class GovernedRunner:
     Runs tasks via axor-core GovernedSession + axor-claude.
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, model: str | None = None) -> None:
         try:
             import axor_claude
 
@@ -44,6 +45,7 @@ class GovernedRunner:
         except ImportError:
             raise ImportError("pip install axor-claude")
         self._api_key = api_key
+        self._model = model
         self._loop = asyncio.new_event_loop()
         from axor_core.policy.heuristic import HeuristicClassifier
         from axor_core.policy.selector import PolicySelector
@@ -76,9 +78,10 @@ class GovernedRunner:
         cap.register(axor_claude.SearchHandler())
         cap.register(axor_claude.GlobHandler())
 
-        executor = axor_claude.ClaudeCodeExecutor(
-            api_key=self._api_key, max_tokens=4096, max_retries=0
-        )
+        executor_kwargs = dict(api_key=self._api_key, max_tokens=4096, max_retries=0)
+        if self._model:
+            executor_kwargs["model"] = self._model
+        executor = axor_claude.ClaudeCodeExecutor(**executor_kwargs)
 
         kwargs: dict[str, Any] = dict(
             executor=executor,
@@ -99,14 +102,16 @@ class GovernedRunner:
         task_name: str,
         prompt: str,
         file_content: str | None = None,
+        suite: str = "small",
     ) -> GovernedResult:
-        return self._run(self._run_single(task_name, prompt, file_content))
+        return self._run(self._run_single(task_name, prompt, file_content, suite))
 
     async def _run_single(
         self,
         task_name: str,
         prompt: str,
         file_content: str | None,
+        suite: str = "small",
     ) -> GovernedResult:
         session = self._make_session()
         policy = await self._select_policy_from_prompt(prompt)
@@ -120,6 +125,7 @@ class GovernedRunner:
             elapsed = (time.perf_counter() - t0) * 1000
             return GovernedResult(
                 task_name=task_name,
+                suite=suite,
                 total_tokens=result.token_usage.input_tokens
                 + result.token_usage.output_tokens,
                 input_tokens=result.token_usage.input_tokens,
@@ -133,6 +139,7 @@ class GovernedRunner:
             elapsed = (time.perf_counter() - t0) * 1000
             return GovernedResult(
                 task_name=task_name,
+                suite=suite,
                 total_tokens=0,
                 input_tokens=0,
                 output_tokens=0,
@@ -148,14 +155,16 @@ class GovernedRunner:
         task_name: str,
         turns: list[str],
         file_content: str | None = None,
+        suite: str = "conversation",
     ) -> GovernedResult:
-        return self._run(self._run_conversation(task_name, turns, file_content))
+        return self._run(self._run_conversation(task_name, turns, file_content, suite))
 
     async def _run_conversation(
         self,
         task_name: str,
         turns: list[str],
         file_content: str | None,
+        suite: str = "conversation",
     ) -> GovernedResult:
         session = self._make_session()
         policy = await self._select_policy_from_prompt(
@@ -163,6 +172,8 @@ class GovernedRunner:
         )
         last_output = ""
         last_policy = "unknown"
+        total_input = 0
+        total_output = 0
 
         if file_content and turns:
             first = f"Here is the code:\n\n```python\n{file_content}\n```\n\n{turns[0]}"
@@ -179,15 +190,17 @@ class GovernedRunner:
                 result = await session.run(turn, policy=policy)
                 last_output = result.output
                 last_policy = result.metadata.get("policy", "unknown")
+                total_input += result.token_usage.input_tokens
+                total_output += result.token_usage.output_tokens
 
             elapsed = (time.perf_counter() - t0) * 1000
-            total = session.total_tokens_spent()
 
             return GovernedResult(
                 task_name=task_name,
-                total_tokens=total,
-                input_tokens=total,  # session-level tracking
-                output_tokens=0,
+                suite=suite,
+                total_tokens=total_input + total_output,
+                input_tokens=total_input,
+                output_tokens=total_output,
                 latency_ms=elapsed,
                 turns=len(all_turns),
                 output=last_output,
@@ -197,9 +210,10 @@ class GovernedRunner:
             elapsed = (time.perf_counter() - t0) * 1000
             return GovernedResult(
                 task_name=task_name,
-                total_tokens=session.total_tokens_spent(),
-                input_tokens=0,
-                output_tokens=0,
+                suite=suite,
+                total_tokens=total_input + total_output,
+                input_tokens=total_input,
+                output_tokens=total_output,
                 latency_ms=elapsed,
                 turns=len(all_turns),
                 output="",
@@ -250,6 +264,7 @@ class GovernedRunner:
 
             return GovernedResult(
                 task_name=task_name,
+                suite="federation",
                 total_tokens=session.total_tokens_spent(),
                 input_tokens=result.token_usage.input_tokens,
                 output_tokens=result.token_usage.output_tokens,
@@ -263,6 +278,7 @@ class GovernedRunner:
             elapsed = (time.perf_counter() - t0) * 1000
             return GovernedResult(
                 task_name=task_name,
+                suite="federation",
                 total_tokens=0,
                 input_tokens=0,
                 output_tokens=0,

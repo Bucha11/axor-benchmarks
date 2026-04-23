@@ -26,6 +26,7 @@ Use tools to complete the task. Be precise and efficient."""
 @dataclass
 class RawResult:
     task_name: str
+    suite: str
     total_tokens: int
     input_tokens: int
     output_tokens: int
@@ -283,9 +284,10 @@ class RawRunner:
     Honest baseline: same tools as governed runner, no governance.
     """
 
-    MODEL = "claude-sonnet-4-5"
+    DEFAULT_MODEL = "claude-sonnet-4-5"
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, model: str | None = None) -> None:
+        self._model = model or self.DEFAULT_MODEL
         try:
             import anthropic
 
@@ -309,7 +311,7 @@ class RawRunner:
 
         for _ in range(max_tool_rounds):
             response = self._client.messages.create(
-                model=self.MODEL,
+                model=self._model,
                 max_tokens=4096,
                 messages=messages,
                 tools=_ALL_TOOLS,
@@ -358,6 +360,7 @@ class RawRunner:
         task_name: str,
         prompt: str,
         file_content: str | None = None,
+        suite: str = "small",
     ) -> RawResult:
         messages = []
         if file_content:
@@ -376,6 +379,7 @@ class RawRunner:
             elapsed = (time.perf_counter() - t0) * 1000
             return RawResult(
                 task_name=task_name,
+                suite=suite,
                 total_tokens=inp + out,
                 input_tokens=inp,
                 output_tokens=out,
@@ -388,6 +392,7 @@ class RawRunner:
             elapsed = (time.perf_counter() - t0) * 1000
             return RawResult(
                 task_name=task_name,
+                suite=suite,
                 total_tokens=0,
                 input_tokens=0,
                 output_tokens=0,
@@ -402,6 +407,7 @@ class RawRunner:
         task_name: str,
         turns: list[str],
         file_content: str | None = None,
+        suite: str = "conversation",
     ) -> RawResult:
         """
         Multi-turn: full history (including all tool calls and results)
@@ -435,6 +441,7 @@ class RawRunner:
             elapsed = (time.perf_counter() - t0) * 1000
             return RawResult(
                 task_name=task_name,
+                suite=suite,
                 total_tokens=total_input + total_output,
                 input_tokens=total_input,
                 output_tokens=total_output,
@@ -447,6 +454,7 @@ class RawRunner:
             elapsed = (time.perf_counter() - t0) * 1000
             return RawResult(
                 task_name=task_name,
+                suite=suite,
                 total_tokens=total_input + total_output,
                 input_tokens=total_input,
                 output_tokens=total_output,
