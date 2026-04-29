@@ -284,7 +284,7 @@ class RawRunner:
     Honest baseline: same tools as governed runner, no governance.
     """
 
-    DEFAULT_MODEL = "claude-sonnet-4-5"
+    DEFAULT_MODEL = "claude-sonnet-4-6"
 
     def __init__(self, api_key: str, model: str | None = None) -> None:
         self._model = model or self.DEFAULT_MODEL

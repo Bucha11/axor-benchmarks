@@ -84,7 +84,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--model",
         default=None,
-        help="Model ID for both runners (default: claude-sonnet-4-5)",
+        help="Model ID for both runners (default: claude-sonnet-4-6)",
     )
     p.add_argument(
         "--no-raw",

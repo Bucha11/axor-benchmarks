@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "axor-benchmarks"
-version = "0.1.1"
+version = "0.2.0"
 description = "Benchmark governed vs raw Claude on your codebase"
 readme = "README.md"
 license = { text = "MIT" }
@@ -20,9 +20,9 @@ classifiers = [
 ]
 
 dependencies = [
-    "axor-core>=0.1.0",
-    "axor-claude>=0.1.0",
-    "anthropic>=0.40.0",
+    "axor-core>=0.4.0,<0.5",
+    "axor-claude>=0.2.0,<0.3",
+    "anthropic>=0.40.0,<1.0",
 ]
 
 [project.optional-dependencies]
